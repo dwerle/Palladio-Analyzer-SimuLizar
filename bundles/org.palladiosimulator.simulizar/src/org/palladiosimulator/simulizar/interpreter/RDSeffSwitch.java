@@ -16,8 +16,11 @@ import org.palladiosimulator.pcm.allocation.Allocation;
 import org.palladiosimulator.pcm.allocation.AllocationContext;
 import org.palladiosimulator.pcm.core.PCMRandomVariable;
 import org.palladiosimulator.pcm.core.composition.AssemblyContext;
+import org.palladiosimulator.pcm.core.composition.EventChannel;
 import org.palladiosimulator.pcm.core.entity.ResourceProvidedRole;
 import org.palladiosimulator.pcm.repository.Parameter;
+import org.palladiosimulator.pcm.repository.SinkRole;
+import org.palladiosimulator.pcm.repository.SourceRole;
 import org.palladiosimulator.pcm.resourceenvironment.ResourceContainer;
 import org.palladiosimulator.pcm.resourcetype.ResourceInterface;
 import org.palladiosimulator.pcm.resourcetype.ResourceRepository;
@@ -28,6 +31,7 @@ import org.palladiosimulator.pcm.seff.AbstractBranchTransition;
 import org.palladiosimulator.pcm.seff.AcquireAction;
 import org.palladiosimulator.pcm.seff.BranchAction;
 import org.palladiosimulator.pcm.seff.CollectionIteratorAction;
+import org.palladiosimulator.pcm.seff.EmitEventAction;
 import org.palladiosimulator.pcm.seff.ExternalCallAction;
 import org.palladiosimulator.pcm.seff.ForkAction;
 import org.palladiosimulator.pcm.seff.ForkedBehaviour;
@@ -44,6 +48,11 @@ import org.palladiosimulator.pcm.seff.util.SeffSwitch;
 import org.palladiosimulator.simulizar.exceptions.PCMModelAccessException;
 import org.palladiosimulator.simulizar.exceptions.PCMModelInterpreterException;
 import org.palladiosimulator.simulizar.exceptions.SimulatedStackAccessException;
+import org.palladiosimulator.simulizar.indirection.actions.ConsumeEventAction;
+import org.palladiosimulator.simulizar.indirection.composition.DataChannelSinkConnector;
+import org.palladiosimulator.simulizar.indirection.composition.DataChannelSourceConnector;
+import org.palladiosimulator.simulizar.indirection.scheduler.IDataChannelResource;
+import org.palladiosimulator.simulizar.indirection.system.DataChannel;
 import org.palladiosimulator.simulizar.interpreter.listener.EventType;
 import org.palladiosimulator.simulizar.interpreter.listener.RDSEFFElementPassedEvent;
 import org.palladiosimulator.simulizar.runtimestate.SimulatedBasicComponentInstance;
@@ -53,6 +62,7 @@ import org.palladiosimulator.simulizar.utils.TransitionDeterminer;
 import de.uka.ipd.sdq.simucomframework.ResourceRegistry;
 import de.uka.ipd.sdq.simucomframework.fork.ForkExecutor;
 import de.uka.ipd.sdq.simucomframework.fork.ForkedBehaviourProcess;
+import de.uka.ipd.sdq.simucomframework.resources.SimulatedResourceContainer;
 import de.uka.ipd.sdq.simucomframework.variables.StackContext;
 import de.uka.ipd.sdq.simucomframework.variables.converter.NumberConverter;
 import de.uka.ipd.sdq.simucomframework.variables.stackframe.SimulatedStackframe;
@@ -161,7 +171,11 @@ class RDSeffSwitch extends SeffSwitch<Object> implements IComposableSwitch {
      * seff.AbstractAction )
      */
     @Override
-    public SimulatedStackframe<Object> caseAbstractAction(final AbstractAction object) {
+    public Object caseAbstractAction(final AbstractAction object) {
+    	if (object instanceof ConsumeEventAction) {
+    		return caseConsumeEventAction((ConsumeEventAction) object);
+    	}
+    	
         throw new UnsupportedOperationException(
                 "SEFF Interpreter tried to interpret unsupported action type: " + object.eClass().getName());
     }
@@ -710,5 +724,92 @@ class RDSeffSwitch extends SeffSwitch<Object> implements IComposableSwitch {
 		}
 
 		return this;
+	}
+	
+	@Override
+	public Object caseEmitEventAction(EmitEventAction action) {
+		IDataChannelResource dataChannelResource = getDataChannelResource(action);
+		
+		SimulatedStackframe<Object> eventStackframe = new SimulatedStackframe<Object>();
+		SimulatedStackHelper.addParameterToStackFrame(null, action.getInputVariableUsages__CallAction(), eventStackframe);
+		
+		dataChannelResource.put(this.context.getThread(), eventStackframe);
+		
+		return SUCCESS;
+	}
+
+	public Object caseConsumeEventAction(ConsumeEventAction action) {
+		IDataChannelResource dataChannelResource = getDataChannelResource(action);
+		
+		SimulatedStackframe<Object> eventStackframe = dataChannelResource.get(this.context.getThread());
+		SimulatedStackHelper.addParameterToStackFrame(eventStackframe, action.getReturnVariableUsage__CallReturnAction(), this.context.getStack().currentStackFrame());
+		
+		return SUCCESS;
+	}
+
+	private IDataChannelResource getDataChannelResource(EmitEventAction action) {
+		AssemblyContext assemblyContext = this.context.getAssemblyContextStack().peek();
+		SourceRole sourceRole = action.getSourceRole__EmitEventAction();
+		DataChannel dataChannel = getConnectedSinkDataChannel(assemblyContext, sourceRole);
+		AllocationContext eventChannelAllocationContext = getAllocationContext(dataChannel);
+		
+		SimulatedResourceContainer resourceContainer = getSimulatedResourceContainer(dataChannel, eventChannelAllocationContext);
+		IDataChannelResource dataChannelResource = resourceContainer.getOrCreateDataChannelResource(dataChannel);
+		return dataChannelResource;
+	}
+	
+	private IDataChannelResource getDataChannelResource(ConsumeEventAction action) {
+		AssemblyContext assemblyContext = this.context.getAssemblyContextStack().peek();
+		SinkRole sinkRole = action.getSinkRole();
+		DataChannel dataChannel = getConnectedSourceDataChannel(assemblyContext, sinkRole);
+		AllocationContext eventChannelAllocationContext = getAllocationContext(dataChannel);
+		
+		SimulatedResourceContainer resourceContainer = getSimulatedResourceContainer(dataChannel, eventChannelAllocationContext);
+		IDataChannelResource dataChannelResource = resourceContainer.getOrCreateDataChannelResource(dataChannel);
+		return dataChannelResource;
+	}
+	
+
+
+	private SimulatedResourceContainer getSimulatedResourceContainer(EventChannel eventChannel,
+			AllocationContext eventChannelAllocationContext) {
+		List<SimulatedResourceContainer> simulatedResourceContainers = this.context.getModel().getResourceRegistry().getSimulatedResourceContainers();
+		return simulatedResourceContainers.stream()
+			.filter(it -> it.getResourceContainerID().equals(eventChannelAllocationContext.getResourceContainer_AllocationContext().getId()))
+			.findAny()
+			.orElseThrow(() -> new PCMModelAccessException("Could not find resource container for event channel " + eventChannel));
+	}
+
+
+	private AllocationContext getAllocationContext(EventChannel eventChannel) {
+		return this.allocation.getAllocationContexts_Allocation().stream()
+			.filter(it -> it.getEventChannel__AllocationContext() == eventChannel)
+			.findAny()
+			.orElseThrow(() -> new PCMModelAccessException("Could not find allocation context for event channel " + eventChannel));
+	}
+
+
+	private DataChannel getConnectedSinkDataChannel(AssemblyContext assemblyContext, SourceRole sourceRole) {
+		return assemblyContext
+			.getParentStructure__AssemblyContext()
+			.getConnectors__ComposedStructure()
+			.stream()
+			.filter(DataChannelSourceConnector.class::isInstance)
+			.map(DataChannelSourceConnector.class::cast)
+			.filter(it -> it.getSourceRole().equals(sourceRole))
+			.findAny().orElseThrow(() -> new PCMModelAccessException("Could not find data channel for source role " + sourceRole))
+			.getDataChannel();
+	}
+	
+	private DataChannel getConnectedSourceDataChannel(AssemblyContext assemblyContext, SinkRole sinkRole) {
+		return assemblyContext
+			.getParentStructure__AssemblyContext()
+			.getConnectors__ComposedStructure()
+			.stream()
+			.filter(DataChannelSinkConnector.class::isInstance)
+			.map(DataChannelSinkConnector.class::cast)
+			.filter(it -> it.getSinkRole().equals(sinkRole))
+			.findAny().orElseThrow(() -> new PCMModelAccessException("Could not find data channel for sink role " + sinkRole))
+			.getDataChannel();
 	}
 }
