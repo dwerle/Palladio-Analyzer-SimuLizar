@@ -6,6 +6,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Stack;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.log4j.Logger;
 import org.eclipse.emf.common.util.EList;
@@ -16,6 +18,7 @@ import org.palladiosimulator.pcm.allocation.Allocation;
 import org.palladiosimulator.pcm.allocation.AllocationContext;
 import org.palladiosimulator.pcm.core.PCMRandomVariable;
 import org.palladiosimulator.pcm.core.composition.AssemblyContext;
+import org.palladiosimulator.pcm.core.composition.Connector;
 import org.palladiosimulator.pcm.core.composition.EventChannel;
 import org.palladiosimulator.pcm.core.entity.ResourceProvidedRole;
 import org.palladiosimulator.pcm.repository.Parameter;
@@ -731,7 +734,7 @@ class RDSeffSwitch extends SeffSwitch<Object> implements IComposableSwitch {
 		IDataChannelResource dataChannelResource = getDataChannelResource(action);
 		
 		SimulatedStackframe<Object> eventStackframe = new SimulatedStackframe<Object>();
-		SimulatedStackHelper.addParameterToStackFrame(null, action.getInputVariableUsages__CallAction(), eventStackframe);
+		SimulatedStackHelper.addParameterToStackFrame(this.context.getStack().getTopFrame(), action.getInputVariableUsages__CallAction(), eventStackframe);
 		
 		dataChannelResource.put(this.context.getThread(), eventStackframe);
 		
@@ -741,8 +744,10 @@ class RDSeffSwitch extends SeffSwitch<Object> implements IComposableSwitch {
 	public Object caseConsumeEventAction(ConsumeEventAction action) {
 		IDataChannelResource dataChannelResource = getDataChannelResource(action);
 		
-		SimulatedStackframe<Object> eventStackframe = dataChannelResource.get(this.context.getThread());
-		SimulatedStackHelper.addParameterToStackFrame(eventStackframe, action.getReturnVariableUsage__CallReturnAction(), this.context.getStack().currentStackFrame());
+		dataChannelResource.get(this.context.getThread(), (eventStackframe) -> {
+			SimulatedStackHelper.addParameterToStackFrame(eventStackframe, action.getReturnVariableUsage__CallReturnAction(), this.context.getStack().currentStackFrame());
+			System.out.println(this.context.getStack().currentStackFrame());
+		});
 		
 		return SUCCESS;
 	}
@@ -790,24 +795,34 @@ class RDSeffSwitch extends SeffSwitch<Object> implements IComposableSwitch {
 
 
 	private DataChannel getConnectedSinkDataChannel(AssemblyContext assemblyContext, SourceRole sourceRole) {
-		return assemblyContext
+		EList<Connector> connectors = assemblyContext
 			.getParentStructure__AssemblyContext()
-			.getConnectors__ComposedStructure()
+			.getConnectors__ComposedStructure();
+		List<DataChannelSourceConnector> dataChannelSourceConnectors = connectors
 			.stream()
 			.filter(DataChannelSourceConnector.class::isInstance)
 			.map(DataChannelSourceConnector.class::cast)
+			.collect(Collectors.toList());
+		
+		return dataChannelSourceConnectors
+			.stream()
 			.filter(it -> it.getSourceRole().equals(sourceRole))
 			.findAny().orElseThrow(() -> new PCMModelAccessException("Could not find data channel for source role " + sourceRole))
 			.getDataChannel();
 	}
 	
 	private DataChannel getConnectedSourceDataChannel(AssemblyContext assemblyContext, SinkRole sinkRole) {
-		return assemblyContext
+		EList<Connector> connectors = assemblyContext
 			.getParentStructure__AssemblyContext()
-			.getConnectors__ComposedStructure()
+			.getConnectors__ComposedStructure();
+		List<DataChannelSinkConnector> dataChannelSinkConnectors = connectors
 			.stream()
 			.filter(DataChannelSinkConnector.class::isInstance)
 			.map(DataChannelSinkConnector.class::cast)
+			.collect(Collectors.toList());
+		
+		return dataChannelSinkConnectors
+			.stream()
 			.filter(it -> it.getSinkRole().equals(sinkRole))
 			.findAny().orElseThrow(() -> new PCMModelAccessException("Could not find data channel for sink role " + sinkRole))
 			.getDataChannel();

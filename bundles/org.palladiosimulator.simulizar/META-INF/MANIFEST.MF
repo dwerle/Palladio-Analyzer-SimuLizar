@@ -36,7 +36,8 @@ Require-Bundle: de.uka.ipd.sdq.simucomframework;bundle-version="4.1.1",
  org.palladiosimulator.simulizar.reconfigurationrule;bundle-version="0.1.0",
  org.eclipse.emf.common,
  org.palladiosimulator.simulizar.indirection;bundle-version="1.0.0",
- org.palladiosimulator.simulizar.indirection.scheduler;bundle-version="1.0.0"
+ org.palladiosimulator.simulizar.indirection.scheduler;bundle-version="1.0.0",
+ org.palladiosimulator.simulizar.utils
 Bundle-ActivationPolicy: lazy
 Bundle-RequiredExecutionEnvironment: JavaSE-1.8
 Export-Package: org.palladiosimulator.simulizar;uses:="org.eclipse.ui.plugin,org.osgi.framework",
@@ -100,15 +101,5 @@ Export-Package: org.palladiosimulator.simulizar;uses:="org.eclipse.ui.plugin,org
    org.palladiosimulator.pcm.usagemodel,
    de.uka.ipd.sdq.simucomframework.usage,
    org.palladiosimulator.simulizar.runtimestate",
- org.palladiosimulator.simulizar.utils;
-  uses:="org.palladiosimulator.simulizar.interpreter,
-   org.eclipse.emf.ecore,
-   org.palladiosimulator.pcm.seff,
-   org.palladiosimulator.pcm.usagemodel,
-   org.apache.log4j,
-   org.eclipse.emf.common.util,
-   de.uka.ipd.sdq.simucomframework.variables.stackframe,
-   org.palladiosimulator.edp2.models.measuringpoint,
-   org.palladiosimulator.metricspec,
-   org.palladiosimulator.monitorrepository"
+ org.palladiosimulator.simulizar.utils
 Bundle-Vendor: palladiosimulator.org

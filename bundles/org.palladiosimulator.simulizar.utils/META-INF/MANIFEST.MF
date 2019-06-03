@@ -1,0 +1,24 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: org.palladiosimulator.simulizar.utils
+Bundle-SymbolicName: org.palladiosimulator.simulizar.utils
+Bundle-Version: 1.0.0.qualifier
+Automatic-Module-Name: org.palladiosimulator.simulizar.utils
+Bundle-RequiredExecutionEnvironment: JavaSE-1.8
+Export-Package: org.palladiosimulator.simulizar.utils;
+  uses:="org.palladiosimulator.simulizar.interpreter,
+   org.eclipse.emf.ecore,
+   org.palladiosimulator.pcm.seff,
+   org.palladiosimulator.pcm.usagemodel,
+   org.apache.log4j,
+   org.eclipse.emf.common.util,
+   de.uka.ipd.sdq.simucomframework.variables.stackframe,
+   org.palladiosimulator.edp2.models.measuringpoint,
+   org.palladiosimulator.metricspec,
+   org.palladiosimulator.monitorrepository"
+Require-Bundle: org.apache.log4j,
+ org.eclipse.emf.common,
+ org.palladiosimulator.pcm,
+ de.uka.ipd.sdq.simucomframework.variables,
+ de.uka.ipd.sdq.stoex.analyser
+

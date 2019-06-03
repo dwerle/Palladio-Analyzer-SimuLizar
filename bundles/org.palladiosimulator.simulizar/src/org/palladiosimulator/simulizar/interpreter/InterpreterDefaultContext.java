@@ -1,6 +1,7 @@
 package org.palladiosimulator.simulizar.interpreter;
 
 import java.util.Stack;
+import java.util.function.Supplier;
 
 import org.palladiosimulator.analyzer.workflow.blackboard.PCMResourceSetPartition;
 import org.palladiosimulator.pcm.core.composition.AssemblyContext;
@@ -39,6 +40,8 @@ public class InterpreterDefaultContext extends Context {
         this.runtimeState = simulizarModel;
         this.modelAccess = this.runtimeState.getModelAccess();
         this.localPCMModelCopy = this.modelAccess.getLocalPCMModel();
+        
+        initializeStack();
     }
 
     InterpreterDefaultContext(final Context context, final AbstractSimuLizarRuntimeState runtimeState,
@@ -55,9 +58,16 @@ public class InterpreterDefaultContext extends Context {
         } else {
             this.stack.pushStackFrame(new SimulatedStackframe<Object>());
         }
+        
+        initializeStack();
     }
 
-    /**
+    private void initializeStack() {
+    	SimulatedStackframe<Object> stackFrame = this.stack.createAndPushNewStackFrame();
+    	stackFrame.addValue("__TIMEPROVIDER", (Supplier<Double>) () -> runtimeState.getModel().getSimulationControl().getCurrentSimulationTime());
+	}
+
+	/**
      * Create interpreter default context from the given default context (model, sim process and
      * stack are set according to the given default context). The contents of the stack will be
      * copied.
