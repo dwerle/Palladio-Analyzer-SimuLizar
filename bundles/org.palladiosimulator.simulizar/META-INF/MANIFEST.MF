@@ -37,7 +37,8 @@ Require-Bundle: de.uka.ipd.sdq.simucomframework;bundle-version="4.1.1",
  org.eclipse.emf.common,
  org.palladiosimulator.simulizar.indirection;bundle-version="1.0.0",
  org.palladiosimulator.simulizar.indirection.scheduler;bundle-version="1.0.0",
- org.palladiosimulator.simulizar.utils
+ org.palladiosimulator.simulizar.utils,
+ org.palladiosimulator.simulizar.simulationevents
 Bundle-ActivationPolicy: lazy
 Bundle-RequiredExecutionEnvironment: JavaSE-1.8
 Export-Package: org.palladiosimulator.simulizar;uses:="org.eclipse.ui.plugin,org.osgi.framework",
@@ -95,7 +96,6 @@ Export-Package: org.palladiosimulator.simulizar;uses:="org.eclipse.ui.plugin,org
    org.palladiosimulator.simulizar.runconfig,
    de.uka.ipd.sdq.simucomframework.model,
    org.palladiosimulator.simulizar.usagemodel",
- org.palladiosimulator.simulizar.simulationevents;uses:="de.uka.ipd.sdq.simulation.abstractsimengine,de.uka.ipd.sdq.simucomframework.entities,de.uka.ipd.sdq.simucomframework.model",
  org.palladiosimulator.simulizar.usagemodel;
   uses:="org.palladiosimulator.simulizar.interpreter,
    org.palladiosimulator.pcm.usagemodel,

@@ -736,7 +736,7 @@ class RDSeffSwitch extends SeffSwitch<Object> implements IComposableSwitch {
 		SimulatedStackframe<Object> eventStackframe = new SimulatedStackframe<Object>();
 		SimulatedStackHelper.addParameterToStackFrame(this.context.getStack().getTopFrame(), action.getInputVariableUsages__CallAction(), eventStackframe);
 		
-		dataChannelResource.put(this.context.getThread(), eventStackframe);
+		dataChannelResource.put(this.context.getThread(), eventStackframe.getDirectContents());
 		
 		return SUCCESS;
 	}
@@ -744,8 +744,9 @@ class RDSeffSwitch extends SeffSwitch<Object> implements IComposableSwitch {
 	public Object caseConsumeEventAction(ConsumeEventAction action) {
 		IDataChannelResource dataChannelResource = getDataChannelResource(action);
 		
-		dataChannelResource.get(this.context.getThread(), (eventStackframe) -> {
-			SimulatedStackHelper.addParameterToStackFrame(eventStackframe, action.getReturnVariableUsage__CallReturnAction(), this.context.getStack().currentStackFrame());
+		dataChannelResource.get(this.context.getThread(), (eventMap) -> {
+			SimulatedStackframe<Object> contextStackframe = SimulatedStackHelper.createFromMap(eventMap);
+			SimulatedStackHelper.addParameterToStackFrame(contextStackframe, action.getReturnVariableUsage__CallReturnAction(), this.context.getStack().currentStackFrame());
 			System.out.println(this.context.getStack().currentStackFrame());
 		});
 		
