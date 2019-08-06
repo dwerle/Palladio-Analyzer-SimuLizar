@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Stack;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import org.apache.log4j.Logger;
 import org.eclipse.emf.common.util.EList;
@@ -822,10 +821,12 @@ class RDSeffSwitch extends SeffSwitch<Object> implements IComposableSwitch {
 			.map(DataChannelSinkConnector.class::cast)
 			.collect(Collectors.toList());
 		
-		return dataChannelSinkConnectors
+		DataChannelSinkConnector sinkConnectorForRole = dataChannelSinkConnectors
 			.stream()
 			.filter(it -> it.getSinkRole().equals(sinkRole))
-			.findAny().orElseThrow(() -> new PCMModelAccessException("Could not find data channel for sink role " + sinkRole))
+			.findAny().orElseThrow(() -> new PCMModelAccessException("Could not find data channel for sink role " + sinkRole));
+		
+		return sinkConnectorForRole
 			.getDataChannel();
 	}
 }
