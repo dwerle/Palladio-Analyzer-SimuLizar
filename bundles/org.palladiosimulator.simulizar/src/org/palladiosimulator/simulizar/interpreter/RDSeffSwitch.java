@@ -5,13 +5,16 @@ import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Map.Entry;
 import java.util.Stack;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.apache.log4j.Logger;
 import org.eclipse.emf.common.util.EList;
 import org.eclipse.emf.ecore.util.ComposedSwitch;
 import org.eclipse.emf.ecore.util.Switch;
+import org.eclipse.swt.internal.ole.win32.GUID;
 import org.palladiosimulator.analyzer.completions.DelegatingExternalCallAction;
 import org.palladiosimulator.pcm.allocation.Allocation;
 import org.palladiosimulator.pcm.allocation.AllocationContext;
@@ -20,6 +23,8 @@ import org.palladiosimulator.pcm.core.composition.AssemblyContext;
 import org.palladiosimulator.pcm.core.composition.Connector;
 import org.palladiosimulator.pcm.core.composition.EventChannel;
 import org.palladiosimulator.pcm.core.entity.ResourceProvidedRole;
+import org.palladiosimulator.pcm.parameter.VariableCharacterisation;
+import org.palladiosimulator.pcm.parameter.VariableUsage;
 import org.palladiosimulator.pcm.repository.Parameter;
 import org.palladiosimulator.pcm.repository.SinkRole;
 import org.palladiosimulator.pcm.repository.SourceRole;
@@ -54,6 +59,7 @@ import org.palladiosimulator.simulizar.indirection.actions.ConsumeEventAction;
 import org.palladiosimulator.simulizar.indirection.composition.DataChannelSinkConnector;
 import org.palladiosimulator.simulizar.indirection.composition.DataChannelSourceConnector;
 import org.palladiosimulator.simulizar.indirection.scheduler.IDataChannelResource;
+import org.palladiosimulator.simulizar.indirection.scheduler.IndirectionUtil;
 import org.palladiosimulator.simulizar.indirection.system.DataChannel;
 import org.palladiosimulator.simulizar.interpreter.listener.EventType;
 import org.palladiosimulator.simulizar.interpreter.listener.RDSEFFElementPassedEvent;
@@ -65,9 +71,13 @@ import de.uka.ipd.sdq.simucomframework.ResourceRegistry;
 import de.uka.ipd.sdq.simucomframework.fork.ForkExecutor;
 import de.uka.ipd.sdq.simucomframework.fork.ForkedBehaviourProcess;
 import de.uka.ipd.sdq.simucomframework.resources.SimulatedResourceContainer;
+import de.uka.ipd.sdq.simucomframework.variables.EvaluationProxy;
 import de.uka.ipd.sdq.simucomframework.variables.StackContext;
 import de.uka.ipd.sdq.simucomframework.variables.converter.NumberConverter;
+import de.uka.ipd.sdq.simucomframework.variables.exceptions.ValueNotInFrameException;
 import de.uka.ipd.sdq.simucomframework.variables.stackframe.SimulatedStackframe;
+import de.uka.ipd.sdq.stoex.AbstractNamedReference;
+import de.uka.ipd.sdq.stoex.analyser.visitors.StoExPrettyPrintVisitor;
 
 /**
  * Switch for RFSEFFs. This visitor is responsible for traversing RDSEFF behaviours.
@@ -728,12 +738,80 @@ class RDSeffSwitch extends SeffSwitch<Object> implements IComposableSwitch {
 		return this;
 	}
 	
+	/**
+	 * Same as {@link SimulatedStackHelper#addParameterToStackFrame(SimulatedStackframe, EList, SimulatedStackframe)} but defaults for the parameters.
+	 * @param parameterName 
+	 */
+	private static final void addParameterToStackFrameWithCopying(final SimulatedStackframe<Object> contextStackFrame,
+            final EList<VariableUsage> parameter, String parameterName, final SimulatedStackframe<Object> targetStackFrame) {
+		
+		for (final VariableUsage variableUsage : parameter) {
+			if (variableUsage.getVariableCharacterisation_VariableUsage().isEmpty()) {
+				final AbstractNamedReference namedReference = variableUsage.getNamedReference__VariableUsage();
+				// TODO: move from convention quick hack to better solution
+				String[] split = namedReference.getReferenceName().split("->");
+				if (split.length != 2) {
+					throw new PCMModelInterpreterException("If no variable chacterisations are present, name must be of form 'input->output'. Name is: " + namedReference.getReferenceName());
+				}
+				
+				
+				String inputPrefix = split[0] + ".";
+				String outputPrefix = split[1] + ".";
+				
+                List<Entry<String, Object>> inputs = contextStackFrame.getContents().stream()
+					.filter(it -> it.getKey().startsWith(inputPrefix))
+					.collect(Collectors.toList());
+                
+                if (inputs.size() == 0) {
+                	throw new PCMModelInterpreterException("Nothing found on stack frame for prefix '" + inputPrefix +
+                			"'. Available: " + contextStackFrame.getContents().stream().map(it -> it.getKey()).collect(Collectors.joining(", ")));
+                }
+                
+				inputs
+					.forEach(it -> targetStackFrame.addValue(outputPrefix + it.getKey().substring(inputPrefix.length()), it.getValue()));
+				continue;
+			}
+			
+            for (final VariableCharacterisation variableCharacterisation : variableUsage
+                    .getVariableCharacterisation_VariableUsage()) {
+
+                final PCMRandomVariable randomVariable = variableCharacterisation
+                        .getSpecification_VariableCharacterisation();
+
+                final AbstractNamedReference namedReference = variableCharacterisation
+                        .getVariableUsage_VariableCharacterisation().getNamedReference__VariableUsage();
+
+                final String id = new StoExPrettyPrintVisitor().doSwitch(namedReference).toString() + "."
+                        + variableCharacterisation.getType().getLiteral();
+                ;
+                if (SimulatedStackHelper.isInnerReference(namedReference)) {
+                    targetStackFrame.addValue(id,
+                            new EvaluationProxy(randomVariable.getSpecification(), contextStackFrame.copyFrame()));
+                } else {
+                    targetStackFrame.addValue(id,
+                            StackContext.evaluateStatic(randomVariable.getSpecification(), contextStackFrame));
+                }
+
+                if (LOGGER.isDebugEnabled()) {
+                    try {
+                        LOGGER.debug("Added value " + targetStackFrame.getValue(id) + " for id " + id
+                                + " to stackframe " + targetStackFrame);
+                    } catch (final ValueNotInFrameException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }
+        }
+	}
+	
 	@Override
 	public Object caseEmitEventAction(EmitEventAction action) {
+//		System.out.println("Emit event action: " + action.getEntityName());
 		IDataChannelResource dataChannelResource = getDataChannelResource(action);
 		
 		SimulatedStackframe<Object> eventStackframe = new SimulatedStackframe<Object>();
-		SimulatedStackHelper.addParameterToStackFrame(this.context.getStack().getTopFrame(), action.getInputVariableUsages__CallAction(), eventStackframe);
+		String parameterName = IndirectionUtil.claimOne(action.getSourceRole__EmitEventAction().getEventGroup__SourceRole().getEventTypes__EventGroup()).getParameter__EventType().getParameterName();
+		addParameterToStackFrameWithCopying(this.context.getStack().currentStackFrame(), action.getInputVariableUsages__CallAction(), parameterName, eventStackframe);
 		
 		dataChannelResource.put(this.context.getThread(), eventStackframe.getDirectContents());
 		
@@ -743,13 +821,20 @@ class RDSeffSwitch extends SeffSwitch<Object> implements IComposableSwitch {
 	public Object caseConsumeEventAction(ConsumeEventAction action) {
 		IDataChannelResource dataChannelResource = getDataChannelResource(action);
 		
-		dataChannelResource.get(this.context.getThread(), (eventMap) -> {
-			SimulatedStackframe<Object> contextStackframe = SimulatedStackHelper.createFromMap(eventMap);
-			SimulatedStackHelper.addParameterToStackFrame(contextStackframe, action.getReturnVariableUsage__CallReturnAction(), this.context.getStack().currentStackFrame());
-			System.out.println(this.context.getStack().currentStackFrame());
-		});
+		String randomUUID = Thread.currentThread().getName();
 		
-		return SUCCESS;
+//		System.out.println("Trying to get (" + randomUUID + ")");
+		boolean result = dataChannelResource.get(this.context.getThread(), (eventMap) -> {
+			SimulatedStackframe<Object> contextStackframe = SimulatedStackHelper.createFromMap(eventMap);
+			String parameterName = IndirectionUtil.claimOne(action.getSinkRole().getEventGroup__SinkRole().getEventTypes__EventGroup()).getParameter__EventType().getParameterName();
+//			System.out.println("Parameter name: " + parameterName + " (" + randomUUID + ")");
+			addParameterToStackFrameWithCopying(contextStackframe, action.getReturnVariableUsage__CallReturnAction(), parameterName, this.context.getStack().currentStackFrame());
+//			System.out.println(this.context.getStack().currentStackFrame());
+		});
+
+//		System.out.println("Continuing with " + this.context.getStack().currentStackFrame() + " (" + randomUUID + ")");
+		
+		return result;
 	}
 
 	private IDataChannelResource getDataChannelResource(EmitEventAction action) {
